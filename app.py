@@ -7,8 +7,21 @@ import streamlit as st
 import pandas as pd
 import base64
 import io
+import os
 from datetime import datetime
 from openai import OpenAI
+
+
+def get_openai_client():
+    """OpenAIクライアントを取得（環境変数から）"""
+    # Streamlit Cloudのsecretsまたは環境変数から取得
+    api_key = st.secrets.get("OPENAI_API_KEY", None) if hasattr(st, 'secrets') else None
+    if not api_key:
+        api_key = os.environ.get('OPENAI_API_KEY')
+
+    if api_key:
+        return OpenAI(api_key=api_key)
+    return None
 
 
 def extract_names_with_openai(client, image_bytes):
@@ -74,38 +87,33 @@ def main():
     st.title("📋 Zoom出席カウント")
     st.markdown("Zoomの参加者パネルのスクリーンショットをアップロードして、出席者を自動抽出します。")
 
+    # OpenAIクライアント取得
+    client = get_openai_client()
+
+    if not client:
+        st.error("⚠️ サーバー設定エラー: APIキーが設定されていません。管理者にお問い合わせください。")
+        return
+
     # セッション状態の初期化
     if 'attendance_data' not in st.session_state:
         st.session_state.attendance_data = {}
 
-    # サイドバー: APIキー設定
+    # サイドバー: 使い方
     with st.sidebar:
-        st.header("⚙️ 設定")
-        api_key = st.text_input(
-            "OpenAI API Key",
-            type="password",
-            help="OpenAI APIキーを入力してください"
-        )
-
-        if api_key:
-            st.success("APIキー設定済み")
-        else:
-            st.warning("APIキーを入力してください")
-
-        st.markdown("---")
-        st.markdown("### 使い方")
+        st.header("📖 使い方")
         st.markdown("""
-        1. OpenAI APIキーを入力
-        2. Zoomの参加者パネルのスクリーンショットを撮影
-        3. 画像をアップロード
-        4. 解析ボタンをクリック
-        5. CSVでダウンロード
+        1. Zoomの参加者パネルのスクリーンショットを撮影
+        2. 画像をアップロード
+        3. 「解析する」ボタンをクリック
+        4. CSVでダウンロード
         """)
 
-    # メインコンテンツ
-    if not api_key:
-        st.info("👈 サイドバーでOpenAI APIキーを設定してください")
-        return
+        st.markdown("---")
+        st.markdown("### ヒント")
+        st.markdown("""
+        - 参加者パネルを大きく表示すると認識精度が上がります
+        - 複数回アップロードすると出席回数がカウントされます
+        """)
 
     # ファイルアップロード
     uploaded_file = st.file_uploader(
@@ -125,7 +133,6 @@ def main():
             if st.button("🔍 解析する", type="primary", use_container_width=True):
                 with st.spinner("AIが参加者を解析中..."):
                     try:
-                        client = OpenAI(api_key=api_key)
                         image_bytes = uploaded_file.getvalue()
                         names = extract_names_with_openai(client, image_bytes)
 
